@@ -96,12 +96,23 @@ export function Controls({ info }: { info: RuntimeInfo }) {
 }
 
 function summarize(kind: Busy, data: Record<string, unknown>): string {
-  if (kind === "seed") return `Seeded ${data.customers ?? "?"} customers.`;
+  if (kind === "seed") {
+    const d = data as { customers?: number; result?: { customers?: number } };
+    const count = d.result?.customers ?? d.customers ?? "?";
+    return `Seeded ${count} customers.`;
+  }
   if (kind === "reset") return "Database reset.";
   if (kind === "run" || kind === "run-llm") {
-    const p = data.processed ?? 0;
-    const r = data.recovered ?? 0;
-    const mode = data.useLlm ? "with Claude" : "rules-only";
+    const d = data as {
+      processed?: number;
+      recovered?: number;
+      useLlm?: boolean;
+      summary?: { processed?: number; recovered?: number; useLlm?: boolean };
+    };
+    const p = d.summary?.processed ?? d.processed ?? 0;
+    const r = d.summary?.recovered ?? d.recovered ?? 0;
+    const isLlm = d.summary?.useLlm ?? d.useLlm;
+    const mode = isLlm ? "with Claude" : "rules-only";
     return `Processed ${p} cases ${mode} — ${r} recovered.`;
   }
   return "Done.";

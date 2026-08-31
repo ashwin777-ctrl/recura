@@ -20,7 +20,7 @@ A tight script for the demo video / live pitch. Timings are a guide. The whole t
 
 ## 1:20–2:30 — The headline numbers (the first undeniable thing)
 
-> "Here's the whole batch after one run. **65% of cases recovered. 75% of the money recovered** — ₹38,930 back.
+> "Here's the whole batch after one run. **67.5% of cases recovered. 76.5% of the money recovered** — ₹39,628 back.
 >
 > Notice value-recovery is *higher* than count-recovery. That's deliberate: the agent chases the ₹2,999 subscriptions and **walks away** from ₹49 add-ons and customers who already cancelled. It optimizes for money, not a vanity percentage.
 >
@@ -32,7 +32,7 @@ A tight script for the demo video / live pitch. Timings are a guide. The whole t
 
 > "This is what makes it *controlled*. **Max 3 attempts** — then the case is closed, exhausted. **No dunning after cancellation.** **A ₹50 floor** — below that, retrying costs more than it recovers. **Backoff** so we wait for payday instead of re-charging a dry account. **Never retry a dead card** — expired cards go straight to 'update your method.'
 >
-> Look at *recoveries by attempt*: **most land on the first try**, very few need all three. The agent isn't over-retrying — it's stopping early when the signal says stop. **28 of the 80 cases stopped cleanly.**
+> Look at *recoveries by attempt*: **most land on the first try**, very few need all three. The agent isn't over-retrying — it's stopping early when the signal says stop. **26 of the 80 cases stopped cleanly.**
 >
 > These rules are deterministic and unit-tested. When I turn on the Claude reasoning layer, Claude can only re-pick *within the actions the policy already allows* — it can never exceed the cap or dun a cancelled customer. If it tries, we override it and log that we did."
 

@@ -20,6 +20,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       summary,
+      ...summary,
       metrics,
       llmRequested: !!opts.useLlm,
       llmUsed: useLlm,

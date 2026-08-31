@@ -13,11 +13,11 @@ Recura takes a batch of failed recurring charges (the kind every subscription bu
 | Metric | Result |
 | --- | --- |
 | Failed payments processed | **80** (₹51,820 at risk) |
-| Recovered (by count) | **52 / 80 → 65.0%** |
-| Recovered (by value) | **₹38,930 → 75.1%** |
-| **Stopped cleanly** (no over-dunning) | **28** (9 hit the attempt cap, 19 halted before any retry) |
-| Avg attempts to recover | **1.6** |
-| Saved via win-back discount | 12 cases (₹1,918 in discounts given up to retain recurring revenue) |
+| Recovered (by count) | **54 / 80 → 67.5%** |
+| Recovered (by value) | **₹39,628.20 → 76.5%** |
+| **Stopped cleanly** (no over-dunning) | **26** (7 hit the attempt cap, 19 halted before any retry) |
+| Avg attempts to recover | **1.8** |
+| Saved via win-back discount | 11 cases (₹2,217.80 in discounts given up to retain recurring revenue) |
 
 Two things make these numbers trustworthy:
 

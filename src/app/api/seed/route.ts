@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const opts = SeedOptionsSchema.parse(body ?? {});
     const result = await seedDatabase(prisma, opts);
-    return NextResponse.json({ ok: true, result });
+    return NextResponse.json({ ok: true, result, ...result });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 400 });
   }

@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const info = await getRuntimeInfo();
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-bg text-fg antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen bg-bg text-fg antialiased" suppressHydrationWarning>
         <div className="flex min-h-screen">
           <Sidebar info={info} />
           <main className="flex-1 overflow-x-hidden">

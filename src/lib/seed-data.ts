@@ -109,11 +109,23 @@ export async function seedDatabase(
     const failedAt = new Date(now - randInt(`${k}:when`, 0, 72) * 3_600_000);
 
     const customer = await prisma.customer.create({
-      data: { name, email, phone, engagementScore, ltvPaise, tenureMonths, segment, cancelled, createdAt: failedAt },
+      data: {
+        id: `cust_${seed}_${i}`,
+        name,
+        email,
+        phone,
+        engagementScore,
+        ltvPaise,
+        tenureMonths,
+        segment,
+        cancelled,
+        createdAt: failedAt,
+      },
     });
 
     const subscription = await prisma.subscription.create({
       data: {
+        id: `sub_${seed}_${i}`,
         customerId: customer.id,
         planName: plan.name,
         amountPaise: plan.amountPaise,
@@ -128,6 +140,7 @@ export async function seedDatabase(
 
     const recoveryCase = await prisma.recoveryCase.create({
       data: {
+        id: `case_${seed}_${i}`,
         subscriptionId: subscription.id,
         customerId: customer.id,
         reason,
