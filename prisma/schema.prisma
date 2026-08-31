@@ -1,0 +1,138 @@
+// Recura — Prisma schema (SQLite).
+// SQLite has no native enums, so status/reason/actionType are stored as strings and
+// validated in the app layer (see src/lib/types.ts). JSON payloads are stored as
+// strings (JSON.stringify) for maximum SQLite/Prisma compatibility.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Single-row key/value store (e.g. the active simulation seed).
+model Meta {
+  key   String @id
+  value String
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  name            String
+  email           String
+  phone           String
+  /// 0..1 — likelihood the customer responds to a prompt (updates card / accepts an offer)
+  engagementScore Float
+  ltvPaise        Int
+  tenureMonths    Int
+  segment         String // "new" | "core" | "vip" | "at_risk"
+  cancelled       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  subscriptions Subscription[]
+  cases         RecoveryCase[]
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  planName      String
+  amountPaise   Int
+  currency      String   @default("INR")
+  interval      String   @default("monthly")
+  status        String   @default("active") // active | halted | recovered | cancelled
+  method        String // "card" | "upi" | "netbanking"
+  cardLast4     String?
+  razorpaySubId String?
+  createdAt     DateTime @default(now())
+
+  attempts PaymentAttempt[]
+  cases    RecoveryCase[]
+
+  @@index([customerId])
+}
+
+model PaymentAttempt {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  caseId         String?
+  case           RecoveryCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  attemptNumber  Int // 0 = original failed charge, 1..n = recovery attempts
+  amountPaise    Int
+  status         String // "failed" | "success"
+  failureReason  String? // enum-like code (see FAILURE_REASONS)
+  failureCode    String? // Razorpay-style code
+  gateway        String  @default("simulation")
+  gatewayRef     String?
+  detail         String?
+  createdAt      DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([caseId])
+}
+
+model RecoveryCase {
+  id                   String    @id @default(cuid())
+  subscriptionId       String
+  subscription         Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  customerId           String
+  customer             Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  reason               String // initial failure reason
+  amountAtRiskPaise    Int
+  amountRecoveredPaise Int       @default(0)
+  recoveredViaDiscount Boolean   @default(false)
+  status               String    @default("open") // open | recovering | recovered | exhausted | abandoned
+  closeReason          String? // human string describing why the case stopped
+  currentAttempt       Int       @default(0)
+  maxAttempts          Int       @default(3)
+  usedLlm              Boolean   @default(false)
+  openedAt             DateTime  @default(now())
+  closedAt             DateTime?
+
+  actions  RecoveryAction[]
+  attempts PaymentAttempt[]
+  events   AuditEvent[]
+
+  @@index([status])
+  @@index([reason])
+}
+
+model RecoveryAction {
+  id            String    @id @default(cuid())
+  caseId        String
+  case          RecoveryCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  attemptNumber Int
+  actionType    String // immediate_retry | delayed_retry_backoff | switch_payment_method | discount_offer | stop
+  decidedBy     String // "rules" | "claude"
+  reasoning     String
+  confidence    Float // expected recovery probability estimate at decision time
+  guardrails    String? // notes on any guardrails the policy enforced over the raw decision
+  scheduledFor  DateTime
+  executedAt    DateTime?
+  outcome       String    @default("pending") // pending | success | failed | stopped
+  amountPaise   Int? // amount actually charged on success (may be discounted)
+  detail        String?
+  createdAt     DateTime  @default(now())
+
+  @@index([caseId])
+}
+
+/// Append-only, human-readable timeline. Lets a reviewer trace any decision end-to-end.
+model AuditEvent {
+  id        String    @id @default(cuid())
+  caseId    String?
+  case      RecoveryCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  ts        DateTime // simulated timestamp of the event
+  actor     String // "system" | "agent:rules" | "agent:claude" | "gateway" | "webhook"
+  event     String // machine key
+  message   String // human-readable line
+  payload   String? // optional JSON string
+  createdAt DateTime  @default(now())
+
+  @@index([caseId])
+  @@index([ts])
+}
