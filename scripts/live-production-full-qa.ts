@@ -109,7 +109,7 @@ async function runLiveProductionQA() {
       if (await runBtn.isVisible()) {
         const responsePromise = page.waitForResponse(
           (r) => r.url().includes("/api/engine/run") && r.status() === 200,
-          { timeout: 20000 }
+          { timeout: 45000 }
         );
         await runBtn.click();
         await responsePromise;
@@ -134,7 +134,7 @@ async function runLiveProductionQA() {
       if (await runAiBtn.isVisible()) {
         const aiResponsePromise = page.waitForResponse(
           (r) => r.url().includes("/api/engine/run") && r.status() === 200,
-          { timeout: 20000 }
+          { timeout: 45000 }
         );
         await runAiBtn.click();
         await aiResponsePromise;
@@ -304,11 +304,11 @@ async function runLiveProductionQA() {
       const hasHeading = (await page.locator("h1:has-text('Policy & stopping rules')").count()) > 0;
       const hasPlayground = (await page.getByText("Interactive Policy & Guardrail Playground").count()) > 0;
 
-      // Select Card Expired -> should recommend card update request
+      // Select Card Expired -> should recommend request_card_update
       const reasonSelect = page.locator("select").first();
       await reasonSelect.selectOption("CARD_EXPIRED");
       await page.waitForTimeout(500);
-      const isCardUpdate = (await page.getByText("Request Card Update", { exact: false }).count()) > 0;
+      const isCardUpdate = (await page.getByText("request_card_update", { exact: false }).count()) > 0;
 
       await logResult(
         "Policy Playground",

@@ -13,18 +13,16 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const raw = await req.text();
   const signature = req.headers.get("x-razorpay-signature") ?? "";
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET ?? "";
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || "sim_secret_recura_dev";
 
-  if (secret) {
-    const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    const expectedBuf = Buffer.from(expected);
-    const signatureBuf = Buffer.from(signature);
-    if (
-      expectedBuf.length !== signatureBuf.length ||
-      !crypto.timingSafeEqual(expectedBuf, signatureBuf)
-    ) {
-      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
-    }
+  const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  const expectedBuf = Buffer.from(expected);
+  const signatureBuf = Buffer.from(signature);
+  if (
+    expectedBuf.length !== signatureBuf.length ||
+    !crypto.timingSafeEqual(expectedBuf, signatureBuf)
+  ) {
+    return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
   }
 
   let event: { event?: string } = {};

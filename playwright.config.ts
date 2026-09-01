@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   reporter: "list",
   use: {
-    baseURL: process.env.TEST_BASE_URL || "http://localhost:3001",
+    baseURL: process.env.TEST_BASE_URL || "https://recura-three.vercel.app",
     trace: "on-first-retry",
     headless: true,
   },
