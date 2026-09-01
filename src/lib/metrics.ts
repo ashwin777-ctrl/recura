@@ -36,7 +36,7 @@ export interface Metrics {
     maxAttempts: number;
   };
   discount: { casesRecoveredViaDiscount: number; discountGivenUpPaise: number };
-  llm: { casesUsingLlm: number; decisionsByClaude: number; decisionsByRules: number };
+  llm: { casesUsingLlm: number; decisionsByAi: number; decisionsByRules: number };
 }
 
 export async function computeMetrics(): Promise<Metrics> {
@@ -158,7 +158,7 @@ export async function computeMetrics(): Promise<Metrics> {
     },
     llm: {
       casesUsingLlm: cases.filter((c) => c.usedLlm).length,
-      decisionsByClaude: actions.filter((a) => a.decidedBy === "ai" || a.decidedBy === "claude").length,
+      decisionsByAi: actions.filter((a) => a.decidedBy === "ai").length,
       decisionsByRules: actions.filter((a) => a.decidedBy === "rules").length,
     },
   };

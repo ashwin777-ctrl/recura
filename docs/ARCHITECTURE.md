@@ -17,8 +17,8 @@ Seven tables, append-only where it matters:
 - **Subscription** — plan, amount (paise), method (card/upi/netbanking), card last-4.
 - **PaymentAttempt** — every charge that hit the gateway. Attempt `0` is the original failure; `1..n` are recovery attempts. This is the ledger of what *actually happened*.
 - **RecoveryCase** — one per failed payment: reason, amount at risk, amount recovered, status (`open → recovering → recovered | exhausted | abandoned`), attempt counter, and a human `closeReason`.
-- **RecoveryAction** — one per decision: action type, `decidedBy` (`rules` | `claude`), reasoning, confidence, any guardrail note, scheduled/executed timestamps, outcome.
-- **AuditEvent** — append-only, timestamped, human-readable. Actors: `system`, `agent:rules`, `agent:claude`, `gateway`, `webhook`. This is the trace.
+- **RecoveryAction** — one per decision: action type, `decidedBy` (`rules` | `ai`), reasoning, confidence, any guardrail note, scheduled/executed timestamps, outcome.
+- **AuditEvent** — append-only, timestamped, human-readable. Actors: `system`, `agent:rules`, `agent:ai`, `gateway`, `webhook`. This is the trace.
 - **Meta** — key/value (e.g. the active seed).
 
 SQLite has no native enums, so enum-like fields are stored as strings and validated in the app layer (`src/lib/types.ts`). JSON payloads are stringified. This keeps the DB portable and zero-setup.
@@ -34,8 +34,8 @@ loadCase → buildContext(attempt N)
                    → checkAbandon()            # hard stops → "stop"
                    → reason-specific playbook  # pick the action
               → if stop OR no LLM: return rules decision
-              → else: askClaudeForDecision(ctx, allowedActions)
-                   → GUARDRAIL: Claude's pick must be in allowedActions
+              → else: askRecuraIntelligenceDecision(ctx, allowedActions)
+                   → GUARDRAIL: intelligence pick must be in allowedActions
                                 else fall back to rules + record override
          → record RecoveryAction + AuditEvent(decision)
          → if "stop": abandon cleanly, close case
@@ -46,7 +46,7 @@ loadCase → buildContext(attempt N)
 
 ### The guardrail (why the LLM can't go rogue)
 
-`allowedActions(ctx)` is computed **from the policy**, per case state — e.g. an expired card never includes `immediate_retry`; a discount only appears for eligible, not-yet-discounted customers. Claude is handed that list and asked to pick. If it returns anything else, we discard its choice, use the policy's, mark `decidedBy: "rules"`, and write a `guardrails` note explaining the rejection. Hard stops (cancelled customer, sub-threshold amount) short-circuit **before** Claude is ever consulted. The policy has final say on anything that touches a stopping rule.
+`allowedActions(ctx)` is computed **from the policy**, per case state — e.g. an expired card never includes `immediate_retry`; a discount only appears for eligible, not-yet-discounted customers. The local intelligence engine is handed that list and asked to pick. If it returns anything else, we discard its choice, use the policy's, mark `decidedBy: "rules"`, and write a `guardrails` note explaining the rejection. Hard stops (cancelled customer, sub-threshold amount) short-circuit **before** the intelligence engine is ever consulted. The policy has final say on anything that touches a stopping rule.
 
 ### The honesty guarantee (single source of truth)
 

@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui";
 
 const ACTOR_TONE: Record<string, "brand" | "info" | "warn" | "good" | "neutral"> = {
   "agent:ai": "brand",
-  "agent:claude": "brand",
   "agent:rules": "info",
   gateway: "warn",
   webhook: "good",

@@ -104,8 +104,8 @@ export function CaseTimeline({ actions }: { actions: TimelineAction[] }) {
                   Attempt {a.attemptNumber}: {actionLabel(a.actionType)}
                 </span>
                 {outcomeBadge(a.outcome)}
-                <Badge tone={a.decidedBy === "claude" || a.decidedBy === "ai" ? "brand" : "neutral"}>
-                  {a.decidedBy === "claude" || a.decidedBy === "ai" ? "AI Intelligence" : "Rules"}
+                <Badge tone={a.decidedBy === "ai" ? "brand" : "neutral"}>
+                  {a.decidedBy === "ai" ? "AI Intelligence" : "Rules"}
                 </Badge>
               </div>
 

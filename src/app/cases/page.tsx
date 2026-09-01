@@ -117,8 +117,8 @@ export default async function CasesPage({
                   <div className="min-w-0">
                     {last ? (
                       <div className="flex items-center gap-1.5">
-                        <Badge tone={last.decidedBy === "claude" || last.decidedBy === "ai" ? "brand" : "neutral"}>
-                          {last.decidedBy === "claude" || last.decidedBy === "ai" ? "AI" : "R"}
+                        <Badge tone={last.decidedBy === "ai" ? "brand" : "neutral"}>
+                          {last.decidedBy === "ai" ? "AI" : "R"}
                         </Badge>
                         <span className="truncate text-xs text-muted">
                           {actionLabel(last.actionType)}

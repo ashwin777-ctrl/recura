@@ -37,7 +37,7 @@ The scary version of a payment-recovery agent hammers a customer's card 20 times
 - **Never retry a dead instrument.** Expired/blocked cards go straight to "update your payment method" — retrying them is guaranteed to fail.
 - **Win-back discounts are tightly gated** — high-LTV `core`/`vip` customers only, once per case, on the final attempt.
 
-These rules are enforced by a **deterministic policy engine** and are **unit-tested** (`src/tests/policy.test.ts`, 16 tests). The optional Claude layer can only *re-pick within the actions the policy already allows* — it can never exceed the cap, dun a cancelled customer, or override a hard stop. If Claude proposes something disallowed, the system falls back to the rules decision **and records the override in the audit trail.**
+These rules are enforced by a **deterministic policy engine** and are **unit-tested** (`src/tests/policy.test.ts`, 16 tests). The local Recura Intelligence layer can only *re-pick within the actions the policy already allows* — it can never exceed the cap, dun a cancelled customer, or override a hard stop. If the intelligence layer proposes something disallowed, the system falls back to the rules decision **and records the override in the audit trail.**
 
 ---
 
@@ -53,7 +53,7 @@ flowchart TD
       direction TB
       P["Policy engine<br/>(hard stopping rules)"] --> A{"AI layer<br/>enabled?"}
       A -- "no" --> D["Decision"]
-      A -- "yes" --> C["Claude re-picks<br/>within allowed actions"] --> GR["Guardrail check"] --> D
+      A -- "yes" --> C["Recura Intelligence re-picks<br/>within allowed actions"] --> GR["Guardrail check"] --> D
       D --> X["Execute via gateway"]
     end
 
@@ -133,7 +133,24 @@ In your `.env`:
 RAZORPAY_MODE="live"
 RAZORPAY_KEY_ID="rzp_test_xxxxxxxx"
 RAZORPAY_KEY_SECRET="xxxxxxxx"
+RAZORPAY_WEBHOOK_SECRET="whsec_xxxxxxxx"
 ```
+
+Then run the end-to-end test flow:
+
+```bash
+npm run dev
+npm run razorpay:test
+```
+
+This script:
+
+1. Creates a real Razorpay test plan in TEST mode.
+2. Creates synthetic test subscriptions for a small batch.
+3. Triggers a `payment.failed` webhook to the local app.
+4. Verifies the webhook signature and records the receipt in the audit trail.
+
+This is the exact manual validation path for the steps you described: key setup → test plan → synthetic customer batch → failed charge → webhook observation.
 
 ---
 

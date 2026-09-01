@@ -156,20 +156,20 @@ export default async function OverviewPage() {
                   <Progress
                     value={
                       m.llm.decisionsByRules /
-                      Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByClaude)
+                      Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByAi)
                     }
                     tone="info"
                   />
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-xs">
-                    <span className="text-muted">Recura Intelligence (AI)</span>
-                    <span className="tnum text-fg">{m.llm.decisionsByClaude}</span>
+                    <span className="text-muted">Recura Intelligence</span>
+                    <span className="tnum text-fg">{m.llm.decisionsByAi}</span>
                   </div>
                   <Progress
                     value={
-                      m.llm.decisionsByClaude /
-                      Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByClaude)
+                      m.llm.decisionsByAi /
+                      Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByAi)
                     }
                     tone="brand"
                   />
@@ -250,7 +250,7 @@ export default async function OverviewPage() {
 }
 
 function ActorDot({ actor }: { actor: string }) {
-  const tone = actor.includes("claude") || actor.includes("ai") || actor.includes("intelligence")
+  const tone = actor.includes("ai") || actor.includes("intelligence")
     ? "bg-brand"
     : actor.includes("rules") || actor === "agent"
       ? "bg-info"

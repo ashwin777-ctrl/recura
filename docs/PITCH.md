@@ -34,7 +34,7 @@ A tight script for the demo video / live pitch. Timings are a guide. The whole t
 >
 > Look at *recoveries by attempt*: **most land on the first try**, very few need all three. The agent isn't over-retrying — it's stopping early when the signal says stop. **26 of the 80 cases stopped cleanly.**
 >
-> These rules are deterministic and unit-tested. When I turn on the Claude reasoning layer, Claude can only re-pick *within the actions the policy already allows* — it can never exceed the cap or dun a cancelled customer. If it tries, we override it and log that we did."
+> These rules are deterministic and unit-tested. The local Recura Intelligence layer can only re-pick *within the actions the policy already allows* — it can never exceed the cap or dun a cancelled customer. If it tries, we override it and log that we did."
 
 ## 3:30–4:30 — Traceability (the reviewer's trust)
 
@@ -42,11 +42,11 @@ A tight script for the demo video / live pitch. Timings are a guide. The whole t
 
 > "Every decision is auditable. Here's one case end-to-end: insufficient funds on a ₹2,999 plan. Attempt 1, immediate retry — failed, and the agent *said* it expected ~12%. Attempt 2, it **waited 72 hours** for payday — you can see the timestamp jump — failed again. Attempt 3: this is a high-value, long-tenure customer, so instead of a fourth retry it extended a **one-time 20% win-back**. Customer accepted — **₹2,399 recovered, subscription saved.**
 >
-> Below is the append-only audit log: system, agent, gateway — every actor, every timestamp. A reviewer can trace *any* case like this. And with a Claude key, this button narrates the whole trail in plain English."
+> "Below is the append-only audit log: system, agent, gateway — every actor, every timestamp. A reviewer can trace *any* case like this. The local Intelligence engine explains the whole trail in plain English."
 
 ## 4:30–5:00 — Close
 
-> "So: a recovery agent that gets **75% of at-risk revenue back**, proves it on a **reproducible batch**, and — just as importantly — **knows when to stop**. Real Razorpay test-mode execution, real Claude reasoning, a full audit trail behind every rupee.
+> "So: a recovery agent that gets **75% of at-risk revenue back**, proves it on a **reproducible batch**, and — just as importantly — **knows when to stop**. Real Razorpay test-mode execution, local Recura Intelligence reasoning, a full audit trail behind every rupee.
 >
 > That's Recura. The decisions are the product; the discipline is the point."
 

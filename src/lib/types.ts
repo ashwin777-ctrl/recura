@@ -24,7 +24,7 @@ export type CaseStatus =
   | "abandoned";
 
 export type Outcome = "pending" | "success" | "failed" | "stopped";
-export type DecidedBy = "rules" | "ai" | "claude";
+export type DecidedBy = "rules" | "ai";
 export type CustomerSegment = "new" | "core" | "vip" | "at_risk";
 export type PaymentMethod = "card" | "upi" | "netbanking";
 

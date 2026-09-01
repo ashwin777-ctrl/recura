@@ -18,7 +18,8 @@
     "setup": "prisma generate --schema=prisma/schema.sqlite.prisma && prisma db push --schema=prisma/schema.sqlite.prisma && tsx prisma/seed.ts",
     "setup:pg": "prisma generate --schema=prisma/schema.prisma && prisma db push --schema=prisma/schema.prisma && tsx prisma/seed.ts",
     "test": "vitest run --no-file-parallelism",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "razorpay:test": "tsx scripts/razorpay-test-batch.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
