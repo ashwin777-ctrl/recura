@@ -420,7 +420,7 @@ export async function runBatch(opts: { useLlm: boolean; limit?: number }): Promi
   });
 
   const tally = { processed: 0, recovered: 0, exhausted: 0, abandoned: 0, useLlm: opts.useLlm };
-  const CHUNK_SIZE = 6;
+  const CHUNK_SIZE = 8;
   for (let i = 0; i < cases.length; i += CHUNK_SIZE) {
     const chunk = cases.slice(i, i + CHUNK_SIZE);
     const outcomes = await Promise.all(

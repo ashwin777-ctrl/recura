@@ -49,9 +49,9 @@ export function Controls({ info }: { info: RuntimeInfo }) {
 
       <Button
         variant="secondary"
-        onClick={() => call("run-llm", "/api/engine/run", { useLlm: true, limit: 12 })}
+        onClick={() => call("run-llm", "/api/engine/run", { useLlm: true, limit: 8 })}
         disabled={disabled}
-        title="Run up to 12 cases with Recura Recovery Intelligence Engine"
+        title="Run up to 8 cases with Recura Recovery Intelligence Engine"
       >
         {busy === "run-llm" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
