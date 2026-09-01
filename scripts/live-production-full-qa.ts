@@ -304,11 +304,11 @@ async function runLiveProductionQA() {
       const hasHeading = (await page.locator("h1:has-text('Policy & stopping rules')").count()) > 0;
       const hasPlayground = (await page.getByText("Interactive Policy & Guardrail Playground").count()) > 0;
 
-      // Select Card Expired -> should recommend request_card_update
+      // Select Card Expired -> should recommend switch_payment_method
       const reasonSelect = page.locator("select").first();
       await reasonSelect.selectOption("CARD_EXPIRED");
       await page.waitForTimeout(500);
-      const isCardUpdate = (await page.getByText("request_card_update", { exact: false }).count()) > 0;
+      const isCardUpdate = (await page.getByText("switch_payment_method", { exact: false }).count()) > 0;
 
       await logResult(
         "Policy Playground",
