@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const opts = RunOptionsSchema.parse(body ?? {});
     const useAi = opts.useLlm !== undefined ? opts.useLlm : opts.useIntelligence ?? true;
-    const limit = opts.limit ?? (useAi ? 12 : undefined);
+    const limit = opts.limit ?? (useAi ? 12 : 24);
 
     const summary = await runBatch({ useLlm: useAi, limit });
     const metrics = await computeMetrics();
