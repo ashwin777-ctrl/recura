@@ -40,7 +40,7 @@ export function Controls({ info }: { info: RuntimeInfo }) {
     <div className="flex flex-wrap items-center gap-2.5">
       <Button
         variant="primary"
-        onClick={() => call("run", "/api/engine/run", { useLlm: false })}
+        onClick={() => call("run", "/api/engine/run", { useLlm: false, limit: 8 })}
         disabled={disabled}
       >
         {busy === "run" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -49,9 +49,9 @@ export function Controls({ info }: { info: RuntimeInfo }) {
 
       <Button
         variant="secondary"
-        onClick={() => call("run-llm", "/api/engine/run", { useLlm: true, limit: 8 })}
+        onClick={() => call("run-llm", "/api/engine/run", { useLlm: true, limit: 4 })}
         disabled={disabled}
-        title="Run up to 8 cases with Recura Recovery Intelligence Engine"
+        title="Run up to 4 cases with Recura Recovery Intelligence Engine"
       >
         {busy === "run-llm" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
