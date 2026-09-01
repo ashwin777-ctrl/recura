@@ -90,13 +90,13 @@ Being explicit here, because it matters for a payments track:
 | Piece | Status |
 | --- | --- |
 | Recovery **decision logic** & stopping rules | **Real.** Deterministic policy engine, fully unit-tested. |
-| **Claude** agent reasoning / per-case explanations | **Real** when `ANTHROPIC_API_KEY` is set (model: `claude-haiku-4-5`). Degrades gracefully to rules-only without a key. |
+| **Recura Recovery Intelligence** reasoning | **Real & Local.** Built-in local intelligence engine computing deterministic recovery scores (0-100), classifications, and factors without external API dependencies. |
 | Razorpay **order creation** | **Real** against Razorpay TEST mode when `RAZORPAY_MODE=live` + keys are set — actual API calls to `api.razorpay.com`. |
 | Whether a retried charge ultimately **succeeds** | **Simulated** from the probability model. You can't script a real card to "fail twice then succeed on payday" in a hackathon, so the *outcome* is modeled — transparently, from one source of truth. |
 | Customer batch (names, plans, failure reasons) | **Synthetic**, deterministically generated. |
 | Audit trail, metrics, dashboard | **Real** — computed from the actual database rows the engine wrote. |
 
-Out of the box it runs **100% offline** on the simulator with zero keys. Add keys to light up the real Razorpay + Claude paths.
+Out of the box it runs **100% offline** on the simulator with zero external keys.
 
 ---
 
@@ -106,40 +106,34 @@ Requires Node 18+.
 
 ```bash
 npm install
-npm run setup      # generate Prisma client, create the SQLite DB, seed the batch
+npm run setup      # generate Prisma client, push schema, seed the batch
 npm run dev        # http://localhost:3000
 ```
 
-Then in the dashboard: **Run recovery batch** (instant, deterministic) → explore the funnel, the per-case traces, the audit log, and the **Policy** page.
+Then in the dashboard: **Run recovery batch** or **Run with AI** → explore the funnel, the per-case traces, the audit log, and the **Policy** page.
 
 To reset and reproduce from scratch at any time:
 
 ```bash
-npm run db:reset   # drop + recreate schema
 npm run seed       # re-seed the deterministic batch
 ```
 
-Run the stopping-rule tests:
+Run the test suite:
 
 ```bash
 npm run test
 ```
 
-### Optional: turn on the real integrations
+### Optional: turn on real Razorpay integration
 
-Copy `.env.example` to `.env` and fill in what you want:
+In your `.env`:
 
 ```bash
 # Enable live Razorpay TEST-mode order creation
 RAZORPAY_MODE="live"
 RAZORPAY_KEY_ID="rzp_test_xxxxxxxx"
 RAZORPAY_KEY_SECRET="xxxxxxxx"
-
-# Enable the Claude reasoning layer + "Explain with AI"
-ANTHROPIC_API_KEY="sk-ant-xxxx"
 ```
-
-With a Claude key set, the **Run with AI** button routes up to 12 cases through Claude (bounded by the same guardrails), and every case detail page gets an **Explain with AI** button that narrates the decision trail in plain English.
 
 ---
 
@@ -147,13 +141,11 @@ With a Claude key set, the **Run with AI** button routes up to 12 cases through 
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `file:./dev.db` | SQLite location. |
+| `DATABASE_URL` | `file:./dev.db` | PostgreSQL / SQLite database connection URL. |
 | `RECURA_SEED` | `42` | Deterministic batch seed — the knob for reproducibility. |
 | `RAZORPAY_MODE` | `simulation` | `simulation` or `live` (Razorpay TEST mode). |
 | `RAZORPAY_KEY_ID` / `_SECRET` | — | Razorpay TEST keys (live mode only). |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Verifies incoming webhook signatures. |
-| `ANTHROPIC_API_KEY` | — | Enables the Claude agent + explanations. |
-| `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Model for per-case reasoning. |
 
 ---
 
@@ -164,24 +156,26 @@ src/
   lib/
     failure-reasons.ts   # reason catalog + the single-source-of-truth probability model
     policy.ts            # the stopping rules + reason-specific playbook (deterministic)
-    agent.ts             # policy + optional Claude layer, with the hard guardrail
+    intelligence.ts      # local Recura Recovery Intelligence Engine (scoring, classification, factors)
+    agent.ts             # policy + intelligence layer, with hard guardrails
     engine.ts            # per-case recovery loop with a simulated clock
     gateway/             # PaymentGateway interface: simulation + real Razorpay adapter
     metrics.ts           # batch metrics computed from DB rows
-    claude.ts            # Claude decision + explanation calls (optional)
     seed-data.ts         # deterministic synthetic batch generator
+    csv-import.ts        # RFC 4180 CSV parser, validator, and importer
   app/
     page.tsx             # Overview dashboard (funnel, charts, KPIs)
     cases/               # case list + end-to-end case trace
+    import/              # custom CSV data import interface
     audit/               # append-only audit log
     policy/              # the visible stopping rules
-    api/                 # seed / run / reset / metrics / cases / audit / webhook
-  tests/policy.test.ts   # 16 tests pinning the stopping rules
+    api/                 # seed / run / reset / metrics / cases / audit / webhook / import
+  tests/                 # comprehensive Vitest test suite
 ```
 
 ## Tech stack
 
-Next.js 15 (App Router) · React 19 · TypeScript · Prisma + SQLite · Tailwind · Recharts · Anthropic SDK · Vitest.
+Next.js 15 (App Router) · React 19 · TypeScript · Prisma (PostgreSQL / SQLite) · Tailwind · Recharts · Vitest.
 
 ---
 

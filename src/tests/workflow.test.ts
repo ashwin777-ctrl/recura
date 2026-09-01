@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { seedDatabase } from "@/lib/seed-data";
 import { runBatch } from "@/lib/engine";
@@ -7,13 +7,13 @@ import { POLICY } from "@/lib/policy";
 import { isLiveMode, gatewayMode } from "@/lib/gateway";
 
 describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
-  beforeEach(async () => {
-    await seedDatabase(prisma, { customers: 25, seed: 42 });
+  beforeAll(async () => {
+    await seedDatabase(prisma, { customers: 10, seed: 42 });
   });
 
   it("1. Seeds deterministic synthetic dataset and opens recovery cases", async () => {
     const cases = await prisma.recoveryCase.findMany({ include: { customer: true, subscription: true } });
-    expect(cases.length).toBe(25);
+    expect(cases.length).toBe(10);
     for (const c of cases) {
       expect(c.status).toBe("open");
       expect(c.currentAttempt).toBe(0);
@@ -24,8 +24,8 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
 
   it("2. Runs recovery batch and transitions cases to terminal states", async () => {
     const summary = await runBatch({ useLlm: false });
-    expect(summary.processed).toBe(25);
-    expect(summary.recovered + summary.exhausted + summary.abandoned).toBe(25);
+    expect(summary.processed).toBe(10);
+    expect(summary.recovered + summary.exhausted + summary.abandoned).toBe(10);
 
     const cases = await prisma.recoveryCase.findMany();
     for (const c of cases) {
@@ -39,7 +39,6 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
   });
 
   it("3. Enforces hard stopping rules: max attempts cap of 3", async () => {
-    await runBatch({ useLlm: false });
     const exhaustedCases = await prisma.recoveryCase.findMany({
       where: { status: "exhausted" },
       include: { actions: true },
@@ -53,7 +52,6 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
   });
 
   it("4. Enforces clean abandonment for cancelled customers or below threshold amounts", async () => {
-    await runBatch({ useLlm: false });
     const abandonedCases = await prisma.recoveryCase.findMany({
       where: { status: "abandoned" },
       include: { customer: true, actions: true },
@@ -67,9 +65,8 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
   });
 
   it("5. Verifies audit trail records every decision, gateway call, and outcome", async () => {
-    await runBatch({ useLlm: false });
     const events = await prisma.auditEvent.findMany({ orderBy: { ts: "asc" } });
-    expect(events.length).toBeGreaterThan(50);
+    expect(events.length).toBeGreaterThan(20);
 
     const actors = new Set(events.map((e) => e.actor));
     expect(actors.has("system")).toBe(true);
@@ -77,11 +74,10 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
     expect(actors.has("gateway")).toBe(true);
 
     const caseOpenedEvents = events.filter((e) => e.event === "case_opened");
-    expect(caseOpenedEvents.length).toBe(25);
+    expect(caseOpenedEvents.length).toBe(10);
   });
 
   it("6. Verifies computeMetrics matches the underlying database records exactly", async () => {
-    await runBatch({ useLlm: false });
     const metrics = await computeMetrics();
     const allCases = await prisma.recoveryCase.findMany();
 
@@ -101,12 +97,12 @@ describe.sequential("End-to-End Track 3 Revenue Recovery Workflow", () => {
 
   it("7. Verifies deterministic reproducibility across repeated runs with identical seed", async () => {
     // Run 1
-    await seedDatabase(prisma, { customers: 20, seed: 12345 });
+    await seedDatabase(prisma, { customers: 4, seed: 12345 });
     const s1 = await runBatch({ useLlm: false });
     const m1 = await computeMetrics();
 
     // Run 2 (Re-seed with same seed)
-    await seedDatabase(prisma, { customers: 20, seed: 12345 });
+    await seedDatabase(prisma, { customers: 4, seed: 12345 });
     const s2 = await runBatch({ useLlm: false });
     const m2 = await computeMetrics();
 

@@ -4,7 +4,6 @@ import { POLICY } from "./policy";
 import { ACTION_META } from "./types";
 import type { ActionType, FailureReasonCode, RuntimeInfo } from "./types";
 import { gatewayMode } from "./gateway";
-import { isClaudeAvailable } from "./claude";
 
 export interface Metrics {
   totals: {
@@ -159,18 +158,25 @@ export async function computeMetrics(): Promise<Metrics> {
     },
     llm: {
       casesUsingLlm: cases.filter((c) => c.usedLlm).length,
-      decisionsByClaude: actions.filter((a) => a.decidedBy === "claude").length,
+      decisionsByClaude: actions.filter((a) => a.decidedBy === "ai" || a.decidedBy === "claude").length,
       decisionsByRules: actions.filter((a) => a.decidedBy === "rules").length,
     },
   };
 }
 
 export async function getRuntimeInfo(): Promise<RuntimeInfo> {
-  const seedMeta = await prisma.meta.findUnique({ where: { key: "seed" } });
+  let seedVal = process.env.RECURA_SEED ?? "42";
+  try {
+    const seedMeta = await prisma.meta.findUnique({ where: { key: "seed" } });
+    if (seedMeta?.value) seedVal = seedMeta.value;
+  } catch {
+    // Fallback if DB is unreachable during static prerender
+  }
   return {
     gatewayMode: gatewayMode(),
-    llmAvailable: isClaudeAvailable(),
-    model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001",
-    seed: seedMeta?.value ?? process.env.RECURA_SEED ?? "42",
+    llmAvailable: true,
+    intelligenceEngine: "Recura Recovery Intelligence (Local)",
+    model: "Recura Intelligence Engine v2.0",
+    seed: seedVal,
   };
 }

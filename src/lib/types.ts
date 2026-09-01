@@ -24,7 +24,7 @@ export type CaseStatus =
   | "abandoned";
 
 export type Outcome = "pending" | "success" | "failed" | "stopped";
-export type DecidedBy = "rules" | "claude";
+export type DecidedBy = "rules" | "ai" | "claude";
 export type CustomerSegment = "new" | "core" | "vip" | "at_risk";
 export type PaymentMethod = "card" | "upi" | "netbanking";
 
@@ -85,6 +85,12 @@ export interface Decision {
   /** Expected recovery probability at decision time (0..1) — same model the gateway draws from. */
   confidence: number;
   decidedBy: DecidedBy;
+  /** Deterministic recovery score computed by Recura Intelligence Engine (0..100) */
+  score?: number;
+  /** Recovery likelihood classification */
+  classification?: "HIGH" | "MEDIUM" | "LOW";
+  /** Key behavioral and financial signals influencing the decision */
+  factors?: string[];
   /** Present when the policy engine overrode or constrained a raw decision. */
   guardrails?: string;
 }
@@ -101,6 +107,7 @@ export const SeedOptionsSchema = z
 export const RunOptionsSchema = z
   .object({
     useLlm: z.boolean().optional(),
+    useIntelligence: z.boolean().optional(),
     limit: z.number().int().min(1).max(500).optional(),
   })
   .default({});
@@ -108,12 +115,12 @@ export const RunOptionsSchema = z
 export type SeedOptions = z.infer<typeof SeedOptionsSchema>;
 export type RunOptions = z.infer<typeof RunOptionsSchema>;
 
-// ---- Runtime/config info surfaced in the UI (kept here so client components can
-// import the type without pulling in server-only modules). ----
+// ---- Runtime/config info surfaced in the UI ----
 
 export interface RuntimeInfo {
   gatewayMode: "simulation" | "razorpay";
   llmAvailable: boolean;
+  intelligenceEngine: string;
   model: string;
   seed: string;
 }

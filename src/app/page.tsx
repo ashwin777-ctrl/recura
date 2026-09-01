@@ -6,6 +6,7 @@ import { POLICY } from "@/lib/policy";
 import { formatINR, formatINRCompact, formatPct } from "@/lib/money";
 import { Card, CardHeader, Stat, Progress, Badge, PageHeader } from "@/components/ui";
 import { Controls } from "@/components/Controls";
+import { DashboardExportButton } from "@/components/DashboardExportButton";
 import { Funnel } from "@/components/Funnel";
 import { ReasonChart, ActionChart, AttemptChart } from "@/components/charts";
 
@@ -26,7 +27,12 @@ export default async function OverviewPage() {
       <PageHeader
         title="Revenue Recovery"
         desc="A controlled agent that recovers failed subscription payments — with hard stopping rules and a full audit trail."
-        right={<Controls info={info} />}
+        right={
+          <div className="flex items-center gap-3">
+            {!empty && <DashboardExportButton metrics={m} />}
+            <Controls info={info} />
+          </div>
+        }
       />
 
       {empty ? (
@@ -140,11 +146,11 @@ export default async function OverviewPage() {
           {/* Agent split + recent audit */}
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">
-              <CardHeader title="Decision engine" desc="Who made the calls" />
+              <CardHeader title="Decision engine" desc="Who made the recovery calls" />
               <div className="space-y-4 px-5 pb-5 pt-4">
                 <div>
                   <div className="mb-1 flex justify-between text-xs">
-                    <span className="text-muted">Deterministic rules</span>
+                    <span className="text-muted">Deterministic policy rules</span>
                     <span className="tnum text-fg">{m.llm.decisionsByRules}</span>
                   </div>
                   <Progress
@@ -152,12 +158,12 @@ export default async function OverviewPage() {
                       m.llm.decisionsByRules /
                       Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByClaude)
                     }
-                    tone="brand"
+                    tone="info"
                   />
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-xs">
-                    <span className="text-muted">Claude-assisted</span>
+                    <span className="text-muted">Recura Intelligence (AI)</span>
                     <span className="tnum text-fg">{m.llm.decisionsByClaude}</span>
                   </div>
                   <Progress
@@ -165,12 +171,12 @@ export default async function OverviewPage() {
                       m.llm.decisionsByClaude /
                       Math.max(1, m.llm.decisionsByRules + m.llm.decisionsByClaude)
                     }
-                    tone="info"
+                    tone="brand"
                   />
                 </div>
                 <p className="text-xs leading-relaxed text-muted">
-                  Every decision — rules or Claude — is bounded by the same hard stopping rules.
-                  Claude may only re-pick within allowed actions; it can never override a stop.
+                  Every decision — rules or AI — is bounded by strict stopping rules. The local
+                  intelligence engine scores churn risk (0-100) and selects optimal recovery levers.
                 </p>
                 <Link
                   href="/policy"
@@ -244,7 +250,7 @@ export default async function OverviewPage() {
 }
 
 function ActorDot({ actor }: { actor: string }) {
-  const tone = actor.includes("claude")
+  const tone = actor.includes("claude") || actor.includes("ai") || actor.includes("intelligence")
     ? "bg-brand"
     : actor.includes("rules") || actor === "agent"
       ? "bg-info"

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
     "A controlled AI agent that recovers failed subscription payments on Razorpay — with stopping rules, a full audit trail, and measured recovery metrics.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const info = await getRuntimeInfo();
   return (

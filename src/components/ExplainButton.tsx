@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Bot } from "lucide-react";
 import { Button } from "@/components/ui";
 
-export function ExplainButton({ caseId, available }: { caseId: string; available: boolean }) {
+export function ExplainButton({ caseId, available = true }: { caseId: string; available?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +30,8 @@ export function ExplainButton({ caseId, available }: { caseId: string; available
         variant="secondary"
         size="sm"
         onClick={run}
-        disabled={loading || !available}
-        title={available ? "Ask Claude to narrate this case" : "Set ANTHROPIC_API_KEY to enable"}
+        disabled={loading}
+        title="Generate instant AI case analysis & explanation"
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -42,10 +42,10 @@ export function ExplainButton({ caseId, available }: { caseId: string; available
       </Button>
       {text ? (
         <div className="mt-3 rounded-lg border border-brand/20 bg-brand/5 p-4 text-sm leading-relaxed text-fg">
-          <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-brand">
-            <Sparkles className="h-3.5 w-3.5" /> Claude’s read on this case
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-brand">
+            <Bot className="h-3.5 w-3.5" /> Recura AI Recovery Analysis
           </div>
-          {text}
+          <div className="whitespace-pre-line text-xs leading-relaxed text-fg">{text}</div>
         </div>
       ) : null}
       {error ? <p className="mt-2 text-xs text-bad">{error}</p> : null}

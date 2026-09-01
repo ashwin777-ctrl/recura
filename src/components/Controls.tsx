@@ -50,12 +50,8 @@ export function Controls({ info }: { info: RuntimeInfo }) {
       <Button
         variant="secondary"
         onClick={() => call("run-llm", "/api/engine/run", { useLlm: true, limit: 12 })}
-        disabled={disabled || !info.llmAvailable}
-        title={
-          info.llmAvailable
-            ? "Run up to 12 cases with Claude reasoning in the loop"
-            : "Set ANTHROPIC_API_KEY to enable the Claude agent"
-        }
+        disabled={disabled}
+        title="Run up to 12 cases with Recura Recovery Intelligence Engine"
       >
         {busy === "run-llm" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -106,14 +102,14 @@ function summarize(kind: Busy, data: Record<string, unknown>): string {
     const d = data as {
       processed?: number;
       recovered?: number;
-      useLlm?: boolean;
-      summary?: { processed?: number; recovered?: number; useLlm?: boolean };
+      summary?: { processed?: number; recovered?: number };
     };
     const p = d.summary?.processed ?? d.processed ?? 0;
     const r = d.summary?.recovered ?? d.recovered ?? 0;
-    const isLlm = d.summary?.useLlm ?? d.useLlm;
-    const mode = isLlm ? "with Claude" : "rules-only";
-    return `Processed ${p} cases ${mode} — ${r} recovered.`;
+    if (kind === "run-llm") {
+      return `Processed ${p} cases with Recura Recovery Intelligence — ${r} recovered.`;
+    }
+    return `Processed ${p} cases (rules engine) — ${r} recovered.`;
   }
   return "Done.";
 }

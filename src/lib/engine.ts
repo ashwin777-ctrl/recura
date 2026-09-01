@@ -44,7 +44,7 @@ async function audit(
 type LoadedCase = Awaited<ReturnType<typeof loadCase>>;
 
 function loadCase(id: string) {
-  return prisma.recoveryCase.findUniqueOrThrow({
+  return prisma.recoveryCase.findUnique({
     where: { id },
     include: { customer: true, subscription: true, actions: true },
   });
@@ -80,21 +80,14 @@ function buildContext(
 
 async function closeCase(
   caseId: string,
-  status: Extract<CaseStatus, "recovered" | "exhausted" | "abandoned">,
+  status: CaseStatus,
   closeReason: string,
   at: Date,
-  extra?: { amountRecoveredPaise?: number; recoveredViaDiscount?: boolean },
+  extra: { amountRecoveredPaise?: number; recoveredViaDiscount?: boolean } = {},
+  subscriptionId?: string,
 ): Promise<void> {
-  const c = await prisma.recoveryCase.update({
-    where: { id: caseId },
-    data: {
-      status,
-      closeReason,
-      closedAt: at,
-      amountRecoveredPaise: extra?.amountRecoveredPaise ?? undefined,
-      recoveredViaDiscount: extra?.recoveredViaDiscount ?? undefined,
-    },
-  });
+  const subId = subscriptionId ?? (await loadCase(caseId))?.subscriptionId;
+  if (!subId) return;
 
   const subStatus =
     status === "recovered"
@@ -102,14 +95,35 @@ async function closeCase(
       : status === "abandoned"
         ? "cancelled"
         : "halted";
-  await prisma.subscription.update({
-    where: { id: c.subscriptionId },
-    data: { status: subStatus },
-  });
 
   const event =
     status === "recovered" ? "case_recovered" : status === "exhausted" ? "case_exhausted" : "case_abandoned";
-  await audit(caseId, at, "system", event, closeReason);
+
+  await prisma.$transaction([
+    prisma.recoveryCase.update({
+      where: { id: caseId },
+      data: {
+        status,
+        closedAt: at,
+        closeReason,
+        amountRecoveredPaise: extra.amountRecoveredPaise ?? 0,
+        recoveredViaDiscount: extra.recoveredViaDiscount ?? false,
+      },
+    }),
+    prisma.subscription.update({
+      where: { id: subId },
+      data: { status: subStatus },
+    }),
+    prisma.auditEvent.create({
+      data: {
+        caseId,
+        ts: at,
+        actor: "system",
+        event,
+        message: closeReason,
+      },
+    }),
+  ]);
 }
 
 /**
@@ -117,13 +131,18 @@ async function closeCase(
  * backoffs (e.g. "retry in 3 days") produce realistic timestamps in the audit trail
  * while the batch still completes instantly.
  */
-async function runCase(
+export async function runCase(
   caseId: string,
-  ctx: { useLlm: boolean; seed: string; gateway: PaymentGateway },
+  opts?: { useLlm?: boolean; seed?: string; gateway?: PaymentGateway },
 ): Promise<CaseStatus> {
+  const seed = opts?.seed ?? (await getSeed());
+  const gateway = opts?.gateway ?? getGateway();
+  const useLlm = opts?.useLlm ?? false;
+  const ctx = { useLlm, seed, gateway };
+
   const c = await loadCase(caseId);
-  if (["recovered", "exhausted", "abandoned"].includes(c.status)) {
-    return c.status as CaseStatus;
+  if (!c || ["recovered", "exhausted", "abandoned"].includes(c.status)) {
+    return (c?.status as CaseStatus) ?? "abandoned";
   }
 
   let simClock = c.openedAt.getTime();
@@ -137,11 +156,6 @@ async function runCase(
       outcome: a.outcome as Outcome,
     }));
 
-  await prisma.recoveryCase.update({
-    where: { id: caseId },
-    data: { status: "recovering", usedLlm: c.usedLlm || ctx.useLlm },
-  });
-
   // Safety bound well above maxAttempts to guarantee termination.
   for (let guard = 0; guard < c.maxAttempts + 2; guard++) {
     attempt += 1;
@@ -152,6 +166,8 @@ async function runCase(
         "exhausted",
         `Reached the ${c.maxAttempts}-attempt cap without recovery — stopped to avoid over-dunning.`,
         new Date(simClock),
+        {},
+        c.subscriptionId,
       );
       return "exhausted";
     }
@@ -160,73 +176,68 @@ async function runCase(
     const decision = await decideRecoveryAction(decisionCtx, { useLlm: ctx.useLlm });
     const scheduledFor = new Date(simClock + decision.delayHours * HOUR_MS);
 
-    const action = await prisma.recoveryAction.create({
-      data: {
-        caseId,
-        attemptNumber: attempt,
-        actionType: decision.actionType,
-        decidedBy: decision.decidedBy,
-        reasoning: decision.reasoning,
-        confidence: decision.confidence,
-        guardrails: decision.guardrails ?? null,
-        scheduledFor,
-        outcome: "pending",
-      },
-    });
-    await audit(
-      caseId,
-      scheduledFor,
-      `agent:${decision.decidedBy}`,
-      "decision",
-      `Attempt ${attempt}: ${actionLabel(decision.actionType)} — ${decision.reasoning}`,
-      { confidence: decision.confidence, guardrails: decision.guardrails ?? null },
-    );
-
     // Hard stop → abandon cleanly (cancelled customer / below threshold).
     if (decision.actionType === "stop") {
-      await prisma.recoveryAction.update({
-        where: { id: action.id },
-        data: { outcome: "stopped", executedAt: scheduledFor, detail: decision.reasoning },
-      });
-      await closeCase(caseId, "abandoned", decision.reasoning, scheduledFor);
+      await prisma.$transaction([
+        prisma.recoveryCase.update({
+          where: { id: caseId },
+          data: {
+            status: "abandoned",
+            closedAt: scheduledFor,
+            closeReason: decision.reasoning,
+          },
+        }),
+        prisma.subscription.update({
+          where: { id: c.subscriptionId },
+          data: { status: "cancelled" },
+        }),
+        prisma.recoveryAction.create({
+          data: {
+            caseId,
+            attemptNumber: attempt,
+            actionType: "stop",
+            decidedBy: decision.decidedBy,
+            reasoning: decision.reasoning,
+            confidence: decision.confidence,
+            guardrails: decision.guardrails ?? null,
+            scheduledFor,
+            executedAt: scheduledFor,
+            outcome: "stopped",
+            detail: decision.reasoning,
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: `agent:${decision.decidedBy}`,
+            event: "decision",
+            message: `Attempt ${attempt}: ${actionLabel(decision.actionType)} — ${decision.reasoning}`,
+            payload: JSON.stringify({
+              confidence: decision.confidence,
+              score: decision.score,
+              classification: decision.classification,
+              factors: decision.factors,
+              guardrails: decision.guardrails ?? null,
+            }),
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: "system",
+            event: "case_abandoned",
+            message: decision.reasoning,
+          },
+        }),
+      ]);
       return "abandoned";
     }
 
     // Advance the simulated clock to the scheduled execution time, then execute.
     simClock = scheduledFor.getTime();
     const result = await ctx.gateway.executeRecovery(decision.actionType, decisionCtx, ctx.seed);
-
-    await prisma.paymentAttempt.create({
-      data: {
-        subscriptionId: c.subscriptionId,
-        caseId,
-        attemptNumber: attempt,
-        amountPaise: result.chargedAmountPaise || c.amountAtRiskPaise,
-        status: result.success ? "success" : "failed",
-        failureReason: result.success ? null : c.reason,
-        failureCode: result.success ? null : REASONS[c.reason as FailureReasonCode].razorpayCode,
-        gateway: result.gateway,
-        gatewayRef: result.gatewayRef,
-        detail: result.detail,
-      },
-    });
-    await prisma.recoveryAction.update({
-      where: { id: action.id },
-      data: {
-        executedAt: scheduledFor,
-        outcome: result.success ? "success" : "failed",
-        amountPaise: result.success ? result.chargedAmountPaise : null,
-        detail: result.detail,
-      },
-    });
-    await audit(
-      caseId,
-      scheduledFor,
-      "gateway",
-      result.success ? "charge_success" : "charge_failed",
-      result.detail,
-      { attempt, gateway: result.gateway, ref: result.gatewayRef },
-    );
 
     history.push({
       attemptNumber: attempt,
@@ -235,29 +246,159 @@ async function runCase(
     });
     if (decision.actionType === "discount_offer") discountUsed = true;
 
-    await prisma.recoveryCase.update({
-      where: { id: caseId },
-      data: { currentAttempt: attempt },
-    });
-
     if (result.success) {
-      await closeCase(
-        caseId,
-        "recovered",
-        `Recovered ${formatINR(result.chargedAmountPaise)} on attempt ${attempt} via ${actionLabel(decision.actionType)}.`,
-        scheduledFor,
-        {
-          amountRecoveredPaise: result.chargedAmountPaise,
-          recoveredViaDiscount: decision.actionType === "discount_offer",
-        },
-      );
+      const closeReason = `Recovered ${formatINR(result.chargedAmountPaise)} on attempt ${attempt} via ${actionLabel(decision.actionType)}.`;
+      await prisma.$transaction([
+        prisma.recoveryCase.update({
+          where: { id: caseId },
+          data: {
+            currentAttempt: attempt,
+            status: "recovered",
+            closedAt: scheduledFor,
+            closeReason,
+            amountRecoveredPaise: result.chargedAmountPaise,
+            recoveredViaDiscount: decision.actionType === "discount_offer",
+          },
+        }),
+        prisma.subscription.update({
+          where: { id: c.subscriptionId },
+          data: { status: "recovered" },
+        }),
+        prisma.recoveryAction.create({
+          data: {
+            caseId,
+            attemptNumber: attempt,
+            actionType: decision.actionType,
+            decidedBy: decision.decidedBy,
+            reasoning: decision.reasoning,
+            confidence: decision.confidence,
+            guardrails: decision.guardrails ?? null,
+            scheduledFor,
+            executedAt: scheduledFor,
+            outcome: "success",
+            amountPaise: result.chargedAmountPaise,
+            detail: result.detail,
+          },
+        }),
+        prisma.paymentAttempt.create({
+          data: {
+            subscriptionId: c.subscriptionId,
+            caseId,
+            attemptNumber: attempt,
+            amountPaise: result.chargedAmountPaise || c.amountAtRiskPaise,
+            status: "success",
+            failureReason: null,
+            failureCode: null,
+            gateway: result.gateway,
+            gatewayRef: result.gatewayRef,
+            detail: result.detail,
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: `agent:${decision.decidedBy}`,
+            event: "decision",
+            message: `Attempt ${attempt}: ${actionLabel(decision.actionType)} — ${decision.reasoning}`,
+            payload: JSON.stringify({
+              confidence: decision.confidence,
+              score: decision.score,
+              classification: decision.classification,
+              factors: decision.factors,
+              guardrails: decision.guardrails ?? null,
+            }),
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: "gateway",
+            event: "charge_success",
+            message: result.detail,
+            payload: JSON.stringify({ attempt, gateway: result.gateway, ref: result.gatewayRef }),
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: "system",
+            event: "case_recovered",
+            message: closeReason,
+          },
+        }),
+      ]);
       return "recovered";
+    } else {
+      await prisma.$transaction([
+        prisma.recoveryCase.update({
+          where: { id: caseId },
+          data: { currentAttempt: attempt },
+        }),
+        prisma.recoveryAction.create({
+          data: {
+            caseId,
+            attemptNumber: attempt,
+            actionType: decision.actionType,
+            decidedBy: decision.decidedBy,
+            reasoning: decision.reasoning,
+            confidence: decision.confidence,
+            guardrails: decision.guardrails ?? null,
+            scheduledFor,
+            executedAt: scheduledFor,
+            outcome: "failed",
+            amountPaise: null,
+            detail: result.detail,
+          },
+        }),
+        prisma.paymentAttempt.create({
+          data: {
+            subscriptionId: c.subscriptionId,
+            caseId,
+            attemptNumber: attempt,
+            amountPaise: result.chargedAmountPaise || c.amountAtRiskPaise,
+            status: "failed",
+            failureReason: c.reason,
+            failureCode: REASONS[c.reason as FailureReasonCode].razorpayCode,
+            gateway: result.gateway,
+            gatewayRef: result.gatewayRef,
+            detail: result.detail,
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: `agent:${decision.decidedBy}`,
+            event: "decision",
+            message: `Attempt ${attempt}: ${actionLabel(decision.actionType)} — ${decision.reasoning}`,
+            payload: JSON.stringify({
+              confidence: decision.confidence,
+              score: decision.score,
+              classification: decision.classification,
+              factors: decision.factors,
+              guardrails: decision.guardrails ?? null,
+            }),
+          },
+        }),
+        prisma.auditEvent.create({
+          data: {
+            caseId,
+            ts: scheduledFor,
+            actor: "gateway",
+            event: "charge_failed",
+            message: result.detail,
+            payload: JSON.stringify({ attempt, gateway: result.gateway, ref: result.gatewayRef }),
+          },
+        }),
+      ]);
     }
-    // else: loop to the next attempt (backoff applied on scheduling)
   }
 
   // Unreachable given the guard, but keeps the type checker happy.
-  await closeCase(caseId, "exhausted", "Recovery loop terminated by safety guard.", new Date(simClock));
+  await closeCase(caseId, "exhausted", "Recovery loop terminated by safety guard.", new Date(simClock), {}, c.subscriptionId);
   return "exhausted";
 }
 
@@ -279,12 +420,18 @@ export async function runBatch(opts: { useLlm: boolean; limit?: number }): Promi
   });
 
   const tally = { processed: 0, recovered: 0, exhausted: 0, abandoned: 0, useLlm: opts.useLlm };
-  for (const { id } of cases) {
-    const outcome = await runCase(id, { useLlm: opts.useLlm, seed, gateway });
-    tally.processed++;
-    if (outcome === "recovered") tally.recovered++;
-    else if (outcome === "exhausted") tally.exhausted++;
-    else if (outcome === "abandoned") tally.abandoned++;
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < cases.length; i += CHUNK_SIZE) {
+    const chunk = cases.slice(i, i + CHUNK_SIZE);
+    const outcomes = await Promise.all(
+      chunk.map(({ id }) => runCase(id, { useLlm: opts.useLlm, seed, gateway })),
+    );
+    for (const outcome of outcomes) {
+      tally.processed++;
+      if (outcome === "recovered") tally.recovered++;
+      else if (outcome === "exhausted") tally.exhausted++;
+      else if (outcome === "abandoned") tally.abandoned++;
+    }
   }
   return tally;
 }

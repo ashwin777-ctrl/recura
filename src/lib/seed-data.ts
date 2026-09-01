@@ -46,12 +46,14 @@ function segmentFor(ltvPaise: number, tenureMonths: number): CustomerSegment {
 
 /** Wipe all domain data (used by /api/reset and before re-seeding). */
 export async function resetAll(prisma: PrismaClient): Promise<void> {
-  await prisma.auditEvent.deleteMany();
-  await prisma.recoveryAction.deleteMany();
-  await prisma.paymentAttempt.deleteMany();
-  await prisma.recoveryCase.deleteMany();
-  await prisma.subscription.deleteMany();
-  await prisma.customer.deleteMany();
+  await prisma.$transaction([
+    prisma.auditEvent.deleteMany(),
+    prisma.recoveryAction.deleteMany(),
+    prisma.paymentAttempt.deleteMany(),
+    prisma.recoveryCase.deleteMany(),
+    prisma.subscription.deleteMany(),
+    prisma.customer.deleteMany(),
+  ]);
 }
 
 export interface SeedResult {
@@ -85,6 +87,12 @@ export async function seedDatabase(
   const reasonCounts: Record<string, number> = {};
   let atRiskPaise = 0;
 
+  const customersData: any[] = [];
+  const subscriptionsData: any[] = [];
+  const casesData: any[] = [];
+  const attemptsData: any[] = [];
+  const eventsData: any[] = [];
+
   for (let i = 0; i < count; i++) {
     const k = `${seed}:cust:${i}`;
     const first = pick(`${k}:first`, FIRST_NAMES);
@@ -108,79 +116,81 @@ export async function seedDatabase(
     // Stagger the "failed at" times over the last few days for a realistic feed.
     const failedAt = new Date(now - randInt(`${k}:when`, 0, 72) * 3_600_000);
 
-    const customer = await prisma.customer.create({
-      data: {
-        id: `cust_${seed}_${i}`,
-        name,
-        email,
-        phone,
-        engagementScore,
-        ltvPaise,
-        tenureMonths,
-        segment,
-        cancelled,
-        createdAt: failedAt,
-      },
+    const customerId = `cust_${seed}_${i}`;
+    const subscriptionId = `sub_${seed}_${i}`;
+    const caseId = `case_${seed}_${i}`;
+
+    customersData.push({
+      id: customerId,
+      name,
+      email,
+      phone,
+      engagementScore,
+      ltvPaise,
+      tenureMonths,
+      segment,
+      cancelled,
+      createdAt: failedAt,
     });
 
-    const subscription = await prisma.subscription.create({
-      data: {
-        id: `sub_${seed}_${i}`,
-        customerId: customer.id,
-        planName: plan.name,
-        amountPaise: plan.amountPaise,
-        interval: "monthly",
-        status: "active",
-        method,
-        cardLast4,
-        razorpaySubId: `sub_sim_${randInt(`${k}:sub`, 100000, 999999)}`,
-        createdAt: failedAt,
-      },
+    subscriptionsData.push({
+      id: subscriptionId,
+      customerId,
+      planName: plan.name,
+      amountPaise: plan.amountPaise,
+      interval: "monthly",
+      status: "active",
+      method,
+      cardLast4,
+      razorpaySubId: `sub_sim_${randInt(`${k}:sub`, 100000, 999999)}`,
+      createdAt: failedAt,
     });
 
-    const recoveryCase = await prisma.recoveryCase.create({
-      data: {
-        id: `case_${seed}_${i}`,
-        subscriptionId: subscription.id,
-        customerId: customer.id,
-        reason,
-        amountAtRiskPaise: plan.amountPaise,
-        status: "open",
-        currentAttempt: 0,
-        maxAttempts: POLICY.maxAttempts,
-        openedAt: failedAt,
-      },
+    casesData.push({
+      id: caseId,
+      subscriptionId,
+      customerId,
+      reason,
+      amountAtRiskPaise: plan.amountPaise,
+      status: "open",
+      currentAttempt: 0,
+      maxAttempts: POLICY.maxAttempts,
+      openedAt: failedAt,
     });
 
-    await prisma.paymentAttempt.create({
-      data: {
-        subscriptionId: subscription.id,
-        caseId: recoveryCase.id,
-        attemptNumber: 0,
-        amountPaise: plan.amountPaise,
-        status: "failed",
-        failureReason: reason,
-        failureCode: spec.razorpayCode,
-        gateway: "simulation",
-        detail: `Scheduled subscription charge of ${formatINR(plan.amountPaise)} failed — ${spec.label}.`,
-        createdAt: failedAt,
-      },
+    attemptsData.push({
+      subscriptionId,
+      caseId,
+      attemptNumber: 0,
+      amountPaise: plan.amountPaise,
+      status: "failed",
+      failureReason: reason,
+      failureCode: spec.razorpayCode,
+      gateway: "simulation",
+      detail: `Scheduled subscription charge of ${formatINR(plan.amountPaise)} failed — ${spec.label}.`,
+      createdAt: failedAt,
     });
 
-    await prisma.auditEvent.create({
-      data: {
-        caseId: recoveryCase.id,
-        ts: failedAt,
-        actor: "system",
-        event: "case_opened",
-        message: `Failed ${plan.name} charge (${formatINR(plan.amountPaise)}) for ${name} — ${spec.label}. Recovery case opened.`,
-        payload: JSON.stringify({ reason, segment, method }),
-      },
+    eventsData.push({
+      caseId,
+      ts: failedAt,
+      actor: "system",
+      event: "case_opened",
+      message: `Failed ${plan.name} charge (${formatINR(plan.amountPaise)}) for ${name} — ${spec.label}. Recovery case opened.`,
+      payload: JSON.stringify({ reason, segment, method }),
     });
 
     reasonCounts[reason] = (reasonCounts[reason] ?? 0) + 1;
     atRiskPaise += plan.amountPaise;
   }
+
+  await prisma.$transaction([
+    prisma.customer.createMany({ data: customersData }),
+    prisma.subscription.createMany({ data: subscriptionsData }),
+    prisma.recoveryCase.createMany({ data: casesData }),
+    prisma.paymentAttempt.createMany({ data: attemptsData }),
+    prisma.auditEvent.createMany({ data: eventsData }),
+  ]);
 
   return { customers: count, cases: count, atRiskPaise, seed, reasonCounts };
 }

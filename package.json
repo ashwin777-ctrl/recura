@@ -5,26 +5,29 @@
   "description": "Recura — AI Revenue Recovery agent for Razorpay: recovers failed subscription payments with a guardrailed decision agent, full audit trail, and measured recovery metrics.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/db-generate.js && next build",
+    "postinstall": "node scripts/db-generate.js",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push --skip-generate",
-    "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset --force",
+    "db:generate": "node scripts/db-generate.js",
+    "db:generate:sqlite": "prisma generate --schema=prisma/schema.sqlite.prisma",
+    "db:generate:pg": "prisma generate --schema=prisma/schema.prisma",
+    "db:push:sqlite": "prisma db push --schema=prisma/schema.sqlite.prisma",
+    "db:push:pg": "prisma db push --schema=prisma/schema.prisma",
     "seed": "tsx prisma/seed.ts",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
-    "test": "vitest run"
+    "setup": "prisma generate --schema=prisma/schema.sqlite.prisma && prisma db push --schema=prisma/schema.sqlite.prisma && tsx prisma/seed.ts",
+    "setup:pg": "prisma generate --schema=prisma/schema.prisma && prisma db push --schema=prisma/schema.prisma && tsx prisma/seed.ts",
+    "test": "vitest run --no-file-parallelism",
+    "test:e2e": "playwright test"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@prisma/client": "^6.3.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
-    "next": "15.1.6",
+    "next": "15.2.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "recharts": "^2.15.0",
@@ -32,6 +35,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",

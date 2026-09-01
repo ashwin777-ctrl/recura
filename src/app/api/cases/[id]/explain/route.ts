@@ -1,53 +1,65 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { explainCase, isClaudeAvailable } from "@/lib/claude";
-import { actionLabel } from "@/lib/types";
-import { formatINR } from "@/lib/money";
+import { analyzeCase, explainCaseNarrative } from "@/lib/intelligence";
 import { REASONS } from "@/lib/failure-reasons";
-import type { FailureReasonCode } from "@/lib/types";
+import type { FailureReasonCode, DecisionContext, ActionType, Outcome } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!isClaudeAvailable()) {
-    return NextResponse.json(
-      { ok: false, error: "Set ANTHROPIC_API_KEY in .env to enable live AI narration." },
-      { status: 400 },
-    );
-  }
   const c = await prisma.recoveryCase.findUnique({
     where: { id },
-    include: { customer: true, subscription: true, actions: { orderBy: { attemptNumber: "asc" } } },
+    include: {
+      customer: true,
+      subscription: true,
+      actions: { orderBy: { attemptNumber: "asc" } },
+    },
   });
+
   if (!c) return NextResponse.json({ ok: false, error: "Case not found" }, { status: 404 });
 
-  const summary = {
-    failureReason: REASONS[c.reason as FailureReasonCode].label,
-    amountAtRisk: formatINR(c.amountAtRiskPaise),
-    amountRecovered: formatINR(c.amountRecoveredPaise),
-    status: c.status,
-    closeReason: c.closeReason,
+  const history: DecisionContext["history"] = c.actions
+    .filter((a) => a.executedAt)
+    .map((a) => ({
+      attemptNumber: a.attemptNumber,
+      actionType: a.actionType as ActionType,
+      outcome: a.outcome as Outcome,
+    }));
+
+  const discountUsed = c.actions.some((a) => a.actionType === "discount_offer" && a.outcome === "success");
+
+  const ctx: DecisionContext = {
+    caseId: c.id,
+    reason: c.reason as FailureReasonCode,
+    attemptNumber: Math.max(1, c.currentAttempt),
+    maxAttempts: c.maxAttempts,
+    amountPaise: c.amountAtRiskPaise,
+    method: c.subscription.method as any,
+    cardLast4: c.subscription.cardLast4,
     customer: {
-      segment: c.customer.segment,
-      lifetimeValue: formatINR(c.customer.ltvPaise),
+      id: c.customer.id,
+      name: c.customer.name,
+      segment: c.customer.segment as any,
+      engagementScore: c.customer.engagementScore,
+      ltvPaise: c.customer.ltvPaise,
       tenureMonths: c.customer.tenureMonths,
       cancelled: c.customer.cancelled,
     },
-    timeline: c.actions.map((a) => ({
-      attempt: a.attemptNumber,
-      action: actionLabel(a.actionType),
-      decidedBy: a.decidedBy,
-      outcome: a.outcome,
-      detail: a.detail,
-    })),
+    history,
+    discountUsed,
   };
 
-  try {
-    const explanation = await explainCase(summary);
-    return NextResponse.json({ ok: true, explanation });
-  } catch (e) {
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 500 });
-  }
+  const analysis = analyzeCase(ctx);
+  const narrative = explainCaseNarrative(analysis, ctx);
+
+  const fullExplanation = `${narrative.overview}\n\n${narrative.scoringBreakdown}\n\n${narrative.recommendation}\n\n**Assessment**: ${narrative.riskAssessment}`;
+
+  return NextResponse.json({
+    ok: true,
+    explanation: fullExplanation,
+    analysis,
+    narrative,
+  });
 }

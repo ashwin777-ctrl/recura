@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FileSpreadsheet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { REASONS } from "@/lib/failure-reasons";
 import { formatINR } from "@/lib/money";
 import { actionLabel, type FailureReasonCode } from "@/lib/types";
-import { Card, PageHeader, Badge } from "@/components/ui";
+import { Card, PageHeader, Badge, Button } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CaseFilters } from "@/components/CaseFilters";
 
@@ -34,11 +34,47 @@ export default async function CasesPage({
       <PageHeader
         title="Recovery cases"
         desc={`${cases.length} case${cases.length === 1 ? "" : "s"} — each traceable from failure to outcome.`}
-        right={<CaseFilters />}
+        right={
+          <div className="flex items-center gap-3">
+            <CaseFilters />
+            <Link href="/import">
+              <Button variant="secondary" size="sm" className="gap-1.5 shadow-sm">
+                <FileSpreadsheet className="h-4 w-4 text-brand" />
+                Import CSV
+              </Button>
+            </Link>
+          </div>
+        }
       />
 
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-[1.4fr_1fr_0.9fr_1fr_auto] gap-3 border-b border-border px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted">
+      {/* Quick overview chips */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl border border-border/80 bg-surface/80 p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Total Cases</div>
+          <div className="text-lg font-bold text-fg tnum mt-0.5">{cases.length}</div>
+        </div>
+        <div className="rounded-xl border border-border/80 bg-surface/80 p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">At Risk</div>
+          <div className="text-lg font-bold text-fg tnum mt-0.5">
+            {formatINR(cases.reduce((sum, item) => sum + item.amountAtRiskPaise, 0))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/80 bg-surface/80 p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Recovered</div>
+          <div className="text-lg font-bold text-good tnum mt-0.5">
+            {formatINR(cases.reduce((sum, item) => sum + item.amountRecoveredPaise, 0))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/80 bg-surface/80 p-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Active In-Flight</div>
+          <div className="text-lg font-bold text-brand tnum mt-0.5">
+            {cases.filter((item) => item.status === "open").length}
+          </div>
+        </div>
+      </div>
+
+      <Card className="overflow-hidden shadow-xl border-border/80">
+        <div className="grid grid-cols-[1.4fr_1fr_0.9fr_1fr_auto] gap-3 border-b border-border px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted bg-[#0e1422]">
           <div>Customer</div>
           <div>Failure reason</div>
           <div className="text-right">At risk</div>
@@ -81,8 +117,8 @@ export default async function CasesPage({
                   <div className="min-w-0">
                     {last ? (
                       <div className="flex items-center gap-1.5">
-                        <Badge tone={last.decidedBy === "claude" ? "brand" : "neutral"}>
-                          {last.decidedBy === "claude" ? "AI" : "R"}
+                        <Badge tone={last.decidedBy === "claude" || last.decidedBy === "ai" ? "brand" : "neutral"}>
+                          {last.decidedBy === "claude" || last.decidedBy === "ai" ? "AI" : "R"}
                         </Badge>
                         <span className="truncate text-xs text-muted">
                           {actionLabel(last.actionType)}

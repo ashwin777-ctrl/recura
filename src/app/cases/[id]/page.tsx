@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, User, CreditCard, AlertCircle } from "lucide-react";
+import { ArrowLeft, User, CreditCard, AlertCircle, Sparkles, Brain, CheckCircle2, ShieldAlert } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getRuntimeInfo } from "@/lib/metrics";
 import { REASONS } from "@/lib/failure-reasons";
 import { formatINR } from "@/lib/money";
-import type { FailureReasonCode } from "@/lib/types";
+import { analyzeCase, explainCaseNarrative } from "@/lib/intelligence";
+import { ACTION_META } from "@/lib/types";
+import type { FailureReasonCode, DecisionContext, ActionType, Outcome } from "@/lib/types";
 import { Card, CardHeader, Badge, PageHeader } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CaseTimeline } from "@/components/CaseTimeline";
@@ -32,6 +34,40 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   if (!c) notFound();
 
   const spec = REASONS[c.reason as FailureReasonCode];
+
+  const history: DecisionContext["history"] = c.actions
+    .filter((a) => a.executedAt)
+    .map((a) => ({
+      attemptNumber: a.attemptNumber,
+      actionType: a.actionType as ActionType,
+      outcome: a.outcome as Outcome,
+    }));
+
+  const discountUsed = c.actions.some((a) => a.actionType === "discount_offer" && a.outcome === "success");
+
+  const ctx: DecisionContext = {
+    caseId: c.id,
+    reason: c.reason as FailureReasonCode,
+    attemptNumber: Math.max(1, c.currentAttempt),
+    maxAttempts: c.maxAttempts,
+    amountPaise: c.amountAtRiskPaise,
+    method: c.subscription.method as any,
+    cardLast4: c.subscription.cardLast4,
+    customer: {
+      id: c.customer.id,
+      name: c.customer.name,
+      segment: c.customer.segment as any,
+      engagementScore: c.customer.engagementScore,
+      ltvPaise: c.customer.ltvPaise,
+      tenureMonths: c.customer.tenureMonths,
+      cancelled: c.customer.cancelled,
+    },
+    history,
+    discountUsed,
+  };
+
+  const aiAnalysis = analyzeCase(ctx);
+  const narrative = explainCaseNarrative(aiAnalysis, ctx);
 
   return (
     <div>
@@ -113,6 +149,77 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         </Card>
       </div>
 
+      {/* Recura Recovery Intelligence Card */}
+      <Card className="mt-4 border-brand/30 bg-surface-2 p-5 shadow-sm">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <Brain className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-fg">Recura Recovery Intelligence</span>
+                <Badge
+                  tone={
+                    aiAnalysis.classification === "HIGH"
+                      ? "good"
+                      : aiAnalysis.classification === "MEDIUM"
+                        ? "warn"
+                        : "bad"
+                  }
+                >
+                  {aiAnalysis.classification} LIKELIHOOD
+                </Badge>
+              </div>
+              <p className="text-xs text-muted">
+                Deterministic recovery probability score computed locally from behavioral and telemetry signals
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 self-start rounded-lg border border-border bg-surface px-4 py-2 text-center md:self-auto">
+            <span className="text-xs text-muted">Recovery Score:</span>
+            <span className="tnum text-xl font-bold text-brand">{aiAnalysis.score}</span>
+            <span className="text-xs text-muted">/ 100</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 border-t border-border/70 pt-4 md:grid-cols-2">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Decision Influencing Factors
+            </div>
+            <ul className="space-y-1.5 text-xs text-fg">
+              {aiAnalysis.factors.map((f, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
+                Recommended Action
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone="brand">{ACTION_META[aiAnalysis.recommendedAction]?.label ?? aiAnalysis.recommendedAction}</Badge>
+                <span className="text-xs text-muted">Delay: {aiAnalysis.delayHours}h</span>
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">{aiAnalysis.reasoning}</p>
+            </div>
+            {aiAnalysis.guardrails.length > 0 ? (
+              <div className="rounded border border-warn/30 bg-warn/5 p-2 text-xs text-warn">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <ShieldAlert className="h-3.5 w-3.5" /> Policy Guardrail Enforced
+                </div>
+                <div className="mt-1 text-[11px] text-muted">{aiAnalysis.guardrails.join(", ")}</div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+
       {/* Close reason banner */}
       {c.closeReason ? (
         <Card
@@ -133,7 +240,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         <CardHeader
           title="Decision & execution trace"
           desc="Every action the agent took, why, and what the gateway returned"
-          right={<ExplainButton caseId={c.id} available={info.llmAvailable} />}
+          right={<ExplainButton caseId={c.id} available={true} />}
         />
         <CaseTimeline actions={c.actions} />
       </Card>

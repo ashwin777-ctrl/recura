@@ -3,6 +3,7 @@ import { POLICY } from "@/lib/policy";
 import { REASONS } from "@/lib/failure-reasons";
 import { formatINR } from "@/lib/money";
 import { Card, CardHeader, Badge, PageHeader } from "@/components/ui";
+import { PolicyPlayground } from "@/components/PolicyPlayground";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default function PolicyPage() {
     <div>
       <PageHeader
         title="Policy & stopping rules"
-        desc="The controlled part of a controlled agent. These rules run deterministically on every decision and cannot be overridden — by the LLM or anything else."
+        desc="The controlled part of a controlled agent. These rules run deterministically on every decision and cannot be overridden — by the AI engine or anything else."
       />
 
       {/* Guardrail statement */}
@@ -33,10 +34,10 @@ export default function PolicyPage() {
           <div>
             <h3 className="text-sm font-semibold text-brand">Hard guardrail</h3>
             <p className="mt-1 text-sm leading-relaxed text-fg">
-              The deterministic policy engine always runs first. When the Claude layer is enabled it
+              The deterministic policy engine always runs first. When the Recura Intelligence layer is enabled it
               may only <span className="font-medium">re-pick within the allowed actions</span> for
               the current state — it can never exceed the attempt cap, retry a dead instrument, dun a
-              cancelled customer, or chase an uneconomical amount. If Claude returns anything outside
+              cancelled customer, or chase an uneconomical amount. If the AI engine proposes anything outside
               the allowed set, the system falls back to the rules decision and records the override
               in the audit trail.
             </p>
@@ -155,9 +156,12 @@ export default function PolicyPage() {
         </div>
       </Card>
 
-      <div className="mt-4 flex items-center gap-2 text-xs text-muted">
+      {/* Interactive Playground */}
+      <PolicyPlayground />
+
+      <div className="mt-6 flex items-center gap-2 text-xs text-muted">
         <ShieldCheck className="h-4 w-4 text-good" />
-        Every one of these rules is unit-tested (see <code className="text-fg">src/tests/policy.test.ts</code>).
+        Every one of these rules is unit-tested and enforced deterministically (see <code className="text-fg">src/tests/policy.test.ts</code>).
       </div>
     </div>
   );

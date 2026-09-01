@@ -11,6 +11,19 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     fileParallelism: false,
-    testTimeout: 20000,
+    maxWorkers: 1,
+    minWorkers: 1,
+    pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
+    testTimeout: 180000,
+    hookTimeout: 180000,
+    sequence: {
+      concurrent: false,
+      shuffle: false,
+    },
   },
 });

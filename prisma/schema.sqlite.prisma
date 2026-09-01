@@ -1,4 +1,4 @@
-// Recura — Prisma schema (SQLite).
+// Recura — Prisma schema (SQLite local development).
 // SQLite has no native enums, so status/reason/actionType are stored as strings and
 // validated in the app layer (see src/lib/types.ts). JSON payloads are stored as
 // strings (JSON.stringify) for maximum SQLite/Prisma compatibility.
@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

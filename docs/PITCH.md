@@ -56,7 +56,7 @@ A tight script for the demo video / live pitch. Timings are a guide. The whole t
 
 - [ ] App running, batch already seeded (opens populated).
 - [ ] Have a recovered **win-back** case URL open in a tab (best single story).
-- [ ] If showing AI: `ANTHROPIC_API_KEY` set; pre-click one **Explain with AI** so it's warm.
+- [ ] Show Recura Recovery Intelligence: click **Run with AI** or **Explain with AI** on a case detail page.
 - [ ] The reproducibility beat (Reset → Re-seed → Run → same numbers) rehearsed.
 - [ ] Policy page ready — it's the differentiator most demos skip.
 

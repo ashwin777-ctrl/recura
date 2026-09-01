@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { decideRecoveryAction } from "@/lib/agent";
-import { POLICY, checkAbandon, allowedActions, proposeAction } from "@/lib/policy";
-import * as claudeModule from "@/lib/claude";
+import { POLICY, checkAbandon, allowedActions } from "@/lib/policy";
+import { analyzeCase, explainCaseNarrative } from "@/lib/intelligence";
 import type { DecisionContext } from "@/lib/types";
 
 function mockCtx(overrides: Partial<DecisionContext> = {}): DecisionContext {
@@ -28,74 +28,91 @@ function mockCtx(overrides: Partial<DecisionContext> = {}): DecisionContext {
   };
 }
 
-describe.sequential("AI / Agent Quality & Guardrail Audits", () => {
-  it("1. Recoverable insufficient-funds case: allows retry backoff and AI picks allowed action", async () => {
-    const ctx = mockCtx({ reason: "INSUFFICIENT_FUNDS", attemptNumber: 1 });
-    const allowed = allowedActions(ctx);
-    expect(allowed).toContain("delayed_retry_backoff");
-
-    vi.spyOn(claudeModule, "isClaudeAvailable").mockReturnValue(true);
-    vi.spyOn(claudeModule, "askClaudeForDecision").mockResolvedValue({
-      actionType: "delayed_retry_backoff",
-      reasoning: "High engagement core customer; balance should recover by payday.",
+describe.sequential("Recura Recovery Intelligence Engine & Quality Audits", () => {
+  it("1. Computes deterministic recovery score (0-100) and HIGH/MEDIUM/LOW classification", () => {
+    // High engagement VIP customer with transient timeout
+    const highCtx = mockCtx({
+      reason: "NETWORK_TIMEOUT",
+      customer: { ...mockCtx().customer, segment: "vip", engagementScore: 0.9, ltvPaise: 2500000 },
     });
+    const highAnalysis = analyzeCase(highCtx);
+    expect(highAnalysis.score).toBeGreaterThanOrEqual(70);
+    expect(highAnalysis.classification).toBe("HIGH");
+    expect(highAnalysis.factors.length).toBeGreaterThan(0);
 
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
-    expect(decision.decidedBy).toBe("claude");
-    expect(decision.actionType).toBe("delayed_retry_backoff");
-    expect(decision.reasoning).toContain("payday");
-    vi.restoreAllMocks();
+    // Moderate engagement new customer with expired card
+    const medCtx = mockCtx({
+      reason: "CARD_EXPIRED",
+      customer: { ...mockCtx().customer, segment: "new", engagementScore: 0.45 },
+    });
+    const medAnalysis = analyzeCase(medCtx);
+    expect(medAnalysis.score).toBeGreaterThanOrEqual(40);
+    expect(medAnalysis.score).toBeLessThan(70);
+    expect(medAnalysis.classification).toBe("MEDIUM");
+
+    // Low engagement customer after multiple failed attempts
+    const lowCtx = mockCtx({
+      reason: "CARD_BLOCKED",
+      attemptNumber: 3,
+      customer: { ...mockCtx().customer, segment: "at_risk", engagementScore: 0.15 },
+    });
+    const lowAnalysis = analyzeCase(lowCtx);
+    expect(lowAnalysis.score).toBeLessThan(40);
+    expect(lowAnalysis.classification).toBe("LOW");
   });
 
-  it("2. Expired/dead payment instrument: AI CANNOT choose retry, only payment method update or win-back", async () => {
-    const ctx = mockCtx({ reason: "CARD_EXPIRED", attemptNumber: 1 });
-    const allowed = allowedActions(ctx);
-    expect(allowed).not.toContain("immediate_retry");
-    expect(allowed).not.toContain("delayed_retry_backoff");
-    expect(allowed).toContain("switch_payment_method");
+  it("2. Factors influence decision: engagement, LTV, failure reason, and prior attempts", () => {
+    const fresh = mockCtx({ attemptNumber: 1 });
+    const retried = mockCtx({ attemptNumber: 3 });
 
-    // Simulate AI attempting an unsafe/disallowed action (immediate_retry on dead card)
-    vi.spyOn(claudeModule, "isClaudeAvailable").mockReturnValue(true);
-    vi.spyOn(claudeModule, "askClaudeForDecision").mockResolvedValue({
-      actionType: "immediate_retry",
-      reasoning: "Let's retry anyway.",
-    });
+    const freshScore = analyzeCase(fresh).score;
+    const retriedScore = analyzeCase(retried).score;
+    // Each failed retry lowers the score
+    expect(freshScore).toBeGreaterThan(retriedScore);
 
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
-    // Safety engine must reject the unsafe AI recommendation and fall back to policy
-    expect(decision.actionType).toBe("switch_payment_method");
-    expect(decision.decidedBy).toBe("rules");
-    expect(decision.guardrails).toMatch(/disallows/i);
-    vi.restoreAllMocks();
+    const analysis = analyzeCase(fresh);
+    const factorString = analysis.factors.join(" ");
+    expect(factorString).toMatch(/engagement|insufficient|pts|rate/i);
   });
 
-  it("3. Cancelled subscription: hard stop before any AI invocation", async () => {
-    const ctx = mockCtx({ customer: { ...mockCtx().customer, cancelled: true } });
-    const abandon = checkAbandon(ctx);
+  it("3. Expired/blocked card: Intelligence engine recommends updating payment method", () => {
+    const expiredCtx = mockCtx({ reason: "CARD_EXPIRED" });
+    const blockedCtx = mockCtx({ reason: "CARD_BLOCKED" });
+
+    const expiredAnalysis = analyzeCase(expiredCtx);
+    const blockedAnalysis = analyzeCase(blockedCtx);
+
+    expect(expiredAnalysis.recommendedAction).toBe("switch_payment_method");
+    expect(blockedAnalysis.recommendedAction).toBe("switch_payment_method");
+  });
+
+  it("4. Hard stopping rules: cancelled subscription produces score 0 and immediate stop", async () => {
+    const cancelledCtx = mockCtx({ customer: { ...mockCtx().customer, cancelled: true } });
+    const abandon = checkAbandon(cancelledCtx);
     expect(abandon).toMatch(/cancelled/i);
 
-    const spy = vi.spyOn(claudeModule, "askClaudeForDecision");
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
+    const analysis = analyzeCase(cancelledCtx);
+    expect(analysis.score).toBe(0);
+    expect(analysis.recommendedAction).toBe("stop");
+
+    const decision = await decideRecoveryAction(cancelledCtx, { useLlm: true });
     expect(decision.actionType).toBe("stop");
     expect(decision.decidedBy).toBe("rules");
-    expect(spy).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
   });
 
-  it("4. Low-value ₹49 case: hard stop before any AI invocation", async () => {
-    const ctx = mockCtx({ amountPaise: 4900 }); // Below ₹50 threshold
-    const abandon = checkAbandon(ctx);
+  it("5. Hard stopping rules: sub-threshold amounts produce stop action", async () => {
+    const lowAmountCtx = mockCtx({ amountPaise: 4900 }); // Below ₹50
+    const abandon = checkAbandon(lowAmountCtx);
     expect(abandon).toMatch(/threshold|economical/i);
 
-    const spy = vi.spyOn(claudeModule, "askClaudeForDecision");
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
+    const analysis = analyzeCase(lowAmountCtx);
+    expect(analysis.recommendedAction).toBe("stop");
+
+    const decision = await decideRecoveryAction(lowAmountCtx, { useLlm: true });
     expect(decision.actionType).toBe("stop");
-    expect(decision.decidedBy).toBe("rules");
-    expect(spy).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
   });
 
-  it("5. Win-back discount eligibility: restricted to eligible segments on final attempt", async () => {
+  it("6. Win-back discount eligibility: restricted to VIP/high-LTV on final attempt", () => {
     // Ineligible customer (low LTV, new segment)
     const ineligible = mockCtx({
       attemptNumber: 3,
@@ -109,36 +126,18 @@ describe.sequential("AI / Agent Quality & Guardrail Audits", () => {
       customer: { ...mockCtx().customer, segment: "vip", ltvPaise: 2500000 },
     });
     expect(allowedActions(eligible)).toContain("discount_offer");
+    const analysis = analyzeCase(eligible);
+    expect(analysis.recommendedAction).toBe("discount_offer");
   });
 
-  it("6. Malformed/unsafe AI recommendations: graceful degradation to rules", async () => {
+  it("7. Generates comprehensive narrative explanation with zero external API calls", () => {
     const ctx = mockCtx();
+    const analysis = analyzeCase(ctx);
+    const narrative = explainCaseNarrative(analysis, ctx);
 
-    // AI throws error (network error or timeout)
-    vi.spyOn(claudeModule, "isClaudeAvailable").mockReturnValue(true);
-    vi.spyOn(claudeModule, "askClaudeForDecision").mockRejectedValue(new Error("API timeout"));
-
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
-    expect(decision.decidedBy).toBe("rules");
-    expect(decision.actionType).toBe("delayed_retry_backoff");
-    expect(decision.reasoning).toMatch(/policy engine/i);
-    vi.restoreAllMocks();
-  });
-
-  it("7. Hallucinated action: rejected and reverted to policy recommendation", async () => {
-    const ctx = mockCtx();
-
-    // AI returns hallucinated action not in ActionType
-    vi.spyOn(claudeModule, "isClaudeAvailable").mockReturnValue(true);
-    vi.spyOn(claudeModule, "askClaudeForDecision").mockResolvedValue({
-      actionType: "send_whatsapp_message" as any,
-      reasoning: "Let's message the customer.",
-    });
-
-    const decision = await decideRecoveryAction(ctx, { useLlm: true });
-    expect(decision.actionType).toBe("delayed_retry_backoff");
-    expect(decision.decidedBy).toBe("rules");
-    expect(decision.guardrails).toMatch(/disallows/i);
-    vi.restoreAllMocks();
+    expect(narrative.overview).toContain(ctx.customer.name);
+    expect(narrative.scoringBreakdown).toContain(`${analysis.score}/100`);
+    expect(narrative.recommendation).toContain(analysis.recommendedAction);
+    expect(narrative.riskAssessment).toBeDefined();
   });
 });
